@@ -64,17 +64,25 @@ _LCD_SETDDRAMADDR = const(0x80)
 
 # Entry flags
 _LCD_ENTRYLEFT = const(0x02)
+_LCD_ENTRYRIGHT = const(0x00)
 _LCD_ENTRYSHIFTDECREMENT = const(0x00)
+_LCD_ENTRYSHIFTINCREMENT = const(0x01)
 
 # Control flags
 _LCD_DISPLAYON = const(0x04)
+_LCD_DISPLAYOFF = const(0x00)
 _LCD_CURSORON = const(0x02)
 _LCD_CURSOROFF = const(0x00)
 _LCD_BLINKON = const(0x01)
 _LCD_BLINKOFF = const(0x00)
 
+# Flags for backlight control
+_LCD_BACKLIGHT = const(0x08)
+_LCD_NOBACKLIGHT = const(0x00)
+
 # Move flags
 _LCD_DISPLAYMOVE = const(0x08)
+_LCD_CURSORMOVE = const(0x00)
 _LCD_MOVERIGHT = const(0x04)
 _LCD_MOVELEFT = const(0x00)
 
@@ -87,6 +95,14 @@ _LCD_5X8DOTS = const(0x00)
 # Offset for up to 4 rows.
 _LCD_ROW_OFFSETS = (0x00, 0x40, 0x14, 0x54)
 
+# Flags for RS pin modes
+_RS_INSTRUCTION = const(0x00)
+_RS_DATA  = const(0x01)
+
+# Pin bitmasks
+_PIN_ENABLE  = const(0x4)
+_PIN_READ_WRITE = const(0x2)
+_PIN_REGISTER_SELECT = const(0x1)
 
 def _set_bit(byte_value, position, val):
     # Given the specified byte_value set the bit at position to the provided
@@ -130,21 +146,12 @@ class Character_LCD:
     RIGHT_TO_LEFT = const(1)
 
     # pylint: disable-msg=too-many-arguments
-    def __init__(self, rs, en, d4, d5, d6, d7, columns, lines):
+    def __init__(self, interface, columns, lines):
 
         self.columns = columns
         self.lines = lines
-        #  save pin numbers
-        self.reset = rs
-        self.enable = en
-        self.dl4 = d4
-        self.dl5 = d5
-        self.dl6 = d6
-        self.dl7 = d7
 
-        # set all pins as outputs
-        for pin in (rs, en, d4, d5, d6, d7):
-            pin.direction = digitalio.Direction.OUTPUT
+        self.interface = interface
 
         # Initialise the display
         self._write8(0x33)
@@ -511,33 +518,7 @@ class Character_LCD:
         # :param value: bytes
         # :param char_mode: character/data mode selector. False (default) for
         # data only, True for character bits.
-        #  one ms delay to prevent writing too quickly.
-        time.sleep(0.001)
-        #  set character/data bit. (charmode = False)
-        self.reset.value = char_mode
-        # WRITE upper 4 bits
-        self.dl4.value = ((value >> 4) & 1) > 0
-        self.dl5.value = ((value >> 5) & 1) > 0
-        self.dl6.value = ((value >> 6) & 1) > 0
-        self.dl7.value = ((value >> 7) & 1) > 0
-        #  send command
-        self._pulse_enable()
-        # WRITE lower 4 bits
-        self.dl4.value = (value & 1) > 0
-        self.dl5.value = ((value >> 1) & 1) > 0
-        self.dl6.value = ((value >> 2) & 1) > 0
-        self.dl7.value = ((value >> 3) & 1) > 0
-        self._pulse_enable()
-
-    def _pulse_enable(self):
-        # Pulses (lo->hi->lo) to send commands.
-        self.enable.value = False
-        # 1microsec pause
-        time.sleep(0.0000001)
-        self.enable.value = True
-        time.sleep(0.0000001)
-        self.enable.value = False
-        time.sleep(0.0000001)
+        self.interface.send(value, char_mode)
 
 
 # pylint: enable-msg=too-many-instance-attributes
@@ -547,12 +528,7 @@ class Character_LCD:
 class Character_LCD_Mono(Character_LCD):
     """Interfaces with monochromatic character LCDs.
 
-        :param ~digitalio.DigitalInOut rs: The reset data line
-        :param ~digitalio.DigitalInOut en: The enable data line
-        :param ~digitalio.DigitalInOut d4: The data line 4
-        :param ~digitalio.DigitalInOut d5: The data line 5
-        :param ~digitalio.DigitalInOut d6: The data line 6
-        :param ~digitalio.DigitalInOut d7: The data line 7
+        :param interface: The interface to communicate with LCD
         :param columns: The columns on the charLCD
         :param lines: The lines on the charLCD
         :param ~digitalio.DigitalInOut backlight_pin: The backlight pin
@@ -565,12 +541,7 @@ class Character_LCD_Mono(Character_LCD):
     # pylint: disable-msg=too-many-arguments
     def __init__(
         self,
-        rs,
-        en,
-        db4,
-        db5,
-        db6,
-        db7,
+        interface,
         columns,
         lines,
         backlight_pin=None,
@@ -585,7 +556,7 @@ class Character_LCD_Mono(Character_LCD):
         if backlight_pin is not None:
             self.backlight_pin.direction = digitalio.Direction.OUTPUT
             self.backlight = True
-        super().__init__(rs, en, db4, db5, db6, db7, columns, lines)
+        super().__init__(interface, columns, lines)
 
     # pylint: enable-msg=too-many-arguments
 
@@ -629,12 +600,7 @@ class Character_LCD_Mono(Character_LCD):
 class Character_LCD_RGB(Character_LCD):
     """Interfaces with RGB character LCDs.
 
-        :param ~digitalio.DigitalInOut rs: The reset data line
-        :param ~digitalio.DigitalInOut en: The enable data line
-        :param ~digitalio.DigitalInOut db4: The data line 4
-        :param ~digitalio.DigitalInOut db5: The data line 5
-        :param ~digitalio.DigitalInOut db6: The data line 6
-        :param ~digitalio.DigitalInOut db7: The data line 7
+        :param interface: The interface to communicate with the charLCD
         :param columns: The columns on the charLCD
         :param lines: The lines on the charLCD
         :param ~pulseio.PWMOut, ~digitalio.DigitalInOut red: Red RGB Anode
@@ -648,12 +614,7 @@ class Character_LCD_RGB(Character_LCD):
     # pylint: disable-msg=too-many-arguments
     def __init__(
         self,
-        rs,
-        en,
-        db4,
-        db5,
-        db6,
-        db7,
+        interface
         columns,
         lines,
         red,
@@ -683,7 +644,7 @@ class Character_LCD_RGB(Character_LCD):
                 )
 
         self._color = [0, 0, 0]
-        super().__init__(rs, en, db4, db5, db6, db7, columns, lines)
+        super().__init__(interface, columns, lines)
 
     @property
     def color(self):

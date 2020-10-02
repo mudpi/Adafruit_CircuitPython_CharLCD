@@ -63,30 +63,18 @@ class Character_LCD_I2C(Character_LCD_Mono):
         import board
         import busio
         from adafruit_character_lcd.character_lcd_i2c import Character_LCD_I2C
+        from i2c_pcf8574_interface.py import I2CPCF8574Interface // or
+        from i2c_mcp23008_interface.py import I2CMCP3008Interface // or
+        from adafruit_mcp230xx.mcp23008 import MCP23008
 
         i2c = busio.I2C(board.SCL, board.SDA)
-        lcd = Character_LCD_I2C(i2c, 16, 2)
+        lcd = Character_LCD_I2C(I2CPCF8574Interface(i2c), 16, 2)
     """
 
-    def __init__(self, i2c, columns, lines, address=None, backlight_inverted=False):
+    def __init__(self, interface, columns, lines, backlight_inverted=False):
         """Initialize character LCD connected to backpack using I2C connection
         on the specified I2C bus with the specified number of columns and
         lines on the display. Optionally specify if backlight is inverted.
         """
-
-        if address:
-            mcp = MCP23008(i2c, address=address)
-        else:
-            mcp = MCP23008(i2c)
-        super().__init__(
-            mcp.get_pin(1),
-            mcp.get_pin(2),
-            mcp.get_pin(3),
-            mcp.get_pin(4),
-            mcp.get_pin(5),
-            mcp.get_pin(6),
-            columns,
-            lines,
-            backlight_pin=mcp.get_pin(7),
-            backlight_inverted=backlight_inverted,
-        )
+        
+        super().__init__(interface, columns, lines, backlight_inverted=backlight_inverted)
